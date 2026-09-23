@@ -1,0 +1,7 @@
+<article class="message">
+  <div class="message-meta">
+    <span class="message-author"><%= message.username %></span>
+    <time class="message-time"><%= message.created_at.strftime("%H:%M") %></time>
+  </div>
+  <p class="message-content"><%= message.content %></p>
+</article>
