@@ -1,52 +1,77 @@
 # Hotwire Realtime Demo
 
-Laboratório pequeno para estudar comunicação em tempo real com Ruby on Rails,
-Hotwire, Turbo Streams, Action Cable e Stimulus.
+A small hands-on Rails lab for learning real-time communication with Hotwire,
+Turbo Streams, Action Cable, and Stimulus.
 
-A aplicação implementa uma sala de chat simples. Uma mensagem é persistida no
-SQLite e, depois do commit da transação, publicada por Action Cable. Todos os
-navegadores conectados à sala recebem a nova mensagem através de Turbo Streams,
-sem recarregar a página.
+The application implements a simple chat room. A message is persisted in
+SQLite and, after the transaction commits, published through Action Cable. All
+browsers connected to the room receive the new message through Turbo Streams,
+without reloading the page.
 
-## Objetivos do laboratório
+## Why this exists
 
-- Entender o fluxo completo de uma mensagem em uma aplicação Rails.
-- Separar responsabilidades entre controller, model, view e JavaScript.
-- Usar Turbo Streams para atualizar HTML em tempo real.
-- Usar Action Cable como transporte WebSocket.
-- Usar Stimulus somente para comportamento de interface local.
-- Comparar o adapter `async` de desenvolvimento com Redis em produção.
+Real-time interfaces can look deceptively simple from the browser. This lab
+isolates the full path of a chat message so each responsibility is visible:
+
+1. The browser submits a message through a normal Rails form.
+2. The controller validates and persists it.
+3. The model broadcasts only after the database transaction commits.
+4. Action Cable delivers a Turbo Stream to every connected browser.
+5. Turbo appends the rendered partial without a full-page refresh.
+
+The project also shows where Stimulus fits: it handles local browser behavior,
+such as keeping the conversation scrolled to the latest message, while Action
+Cable handles server-to-browser communication.
+
+## What's in this repo
+
+- `MessagesController#index` and `#create` - render the room and create messages
+- `Message` - validates messages and broadcasts them after commit
+- `app/views/messages/index.html.erb` - renders the room and message form
+- `app/views/messages/_message.html.erb` - renders one message
+- `turbo_stream_from "messages"` - subscribes each browser to the room stream
+- `chat_controller.js` - keeps the local conversation scrolled to the bottom
+- `config/cable.yml` - uses the `async` adapter in development and `redis` in production
+
+## Objectives
+
+- Understand the complete message flow in a Rails application.
+- Separate responsibilities between the controller, model, view, and JavaScript.
+- Use Turbo Streams to update HTML in real time.
+- Use Action Cable as the WebSocket transport.
+- Use Stimulus only for local interface behavior.
+- Compare the development `async` adapter with Redis in production.
 
 ## Stack
 
-- Ruby `3.3.5` (definido em `.ruby-version`)
-- Rails `7.2.3` ou superior dentro da série `7.2.3`
+- Ruby `3.3.5` (defined in `.ruby-version`)
+- Rails `7.2.3` or newer within the `7.2.3` series
 - SQLite3
 - Puma
 - Hotwire:
-	- `turbo-rails` para navegação Turbo e Turbo Streams
-	- `stimulus-rails` para comportamento JavaScript
-	- Action Cable, incluído no Rails, para WebSockets
-- Importmap para carregar JavaScript sem pipeline Node obrigatório
-- Minitest, incluído no Rails, para testes
-- RuboCop Rails Omakase para estilo
-- Brakeman para análise de segurança
+  - `turbo-rails` for Turbo navigation and Turbo Streams
+  - `stimulus-rails` for JavaScript behavior
+  - Action Cable, included with Rails, for WebSockets
+- Importmap for loading JavaScript without a required Node pipeline
+- Minitest, included with Rails, for tests
+- RuboCop Rails Omakase for style
+- Brakeman for security analysis
 
-O `json` está fixado em uma versão menor que 3 porque o Rails 7.2 utiliza a
-opção `quirks_mode` do encoder JSON, que não é aceita pelo `json 3.x` usado no
-ambiente original deste projeto.
+`json` is pinned below version 3 because Rails 7.2 uses the JSON encoder's
+`quirks_mode` option, which is not accepted by `json 3.x` in the original
+environment for this project.
 
-## Pré-requisitos
+## Requirements
 
-Instale ou tenha disponível:
+Install or make sure these tools are available:
 
 - Ruby `3.3.5`
 - Bundler
 - SQLite3
-- Node.js e Yarn não são necessários para o fluxo principal, pois o projeto
-	usa Importmap.
+- Node.js and Yarn are not required for the main workflow because the project
+  uses Importmap.
 
-Confira o ambiente:
+Check the environment:
 
 ```bash
 ruby -v
@@ -54,151 +79,137 @@ bundle -v
 sqlite3 --version
 ```
 
-## Instalação
+## Running it
 
-Na raiz do projeto:
+From the project root:
 
 ```bash
 bundle install
 bin/rails db:prepare
-```
-
-`db:prepare` cria o banco quando necessário e aplica as migrations pendentes.
-
-## Executando a aplicação
-
-Inicie o servidor:
-
-```bash
 bin/rails server
 ```
 
-Abra [http://localhost:3000](http://localhost:3000). A rota raiz exibe a sala
-de chat.
+Open [http://localhost:3000](http://localhost:3000). The root route displays
+the chat room.
 
-Para testar o realtime, abra a aplicação em duas janelas ou navegadores,
-envie uma mensagem em uma delas e observe a mensagem aparecer na outra.
+To test realtime behavior, open the application in two windows or browsers,
+send a message in one of them, and watch it appear in the other.
 
-## Como uma mensagem funciona
+## How a message works
 
 ```mermaid
 sequenceDiagram
-		participant BrowserA as Navegador A
-		participant Rails as Rails
-		participant DB as SQLite
-		participant Cable as Action Cable
-		participant BrowserB as Navegador B
+    participant BrowserA as Browser A
+    participant Rails as Rails
+    participant DB as SQLite
+    participant Cable as Action Cable
+    participant BrowserB as Browser B
 
-		BrowserA->>Rails: POST /messages
-		Rails->>DB: valida e salva Message
-		DB-->>Rails: commit
-		Rails->>Cable: broadcast_append_to "messages"
-		Cable-->>BrowserA: Turbo Stream
-		Cable-->>BrowserB: Turbo Stream
-		BrowserA->>BrowserA: adiciona partial no DOM
-		BrowserB->>BrowserB: adiciona partial no DOM
+    BrowserA->>Rails: POST /messages
+    Rails->>DB: validate and save Message
+    DB-->>Rails: commit
+    Rails->>Cable: broadcast_append_to "messages"
+    Cable-->>BrowserA: Turbo Stream
+    Cable-->>BrowserB: Turbo Stream
+    BrowserA->>BrowserA: append partial to the DOM
+    BrowserB->>BrowserB: append partial to the DOM
 ```
 
-### 1. Renderização inicial
+### 1. Initial rendering
 
-`MessagesController#index` busca as mensagens ordenadas por `created_at` e
-cria um objeto vazio para o formulário:
+`MessagesController#index` fetches messages ordered by `created_at` and creates
+an empty object for the form:
 
 ```ruby
 @messages = Message.order(:created_at)
 @message = Message.new
 ```
 
-A view renderiza cada registro com o partial `_message.html.erb`.
+The view renders each record with the `_message.html.erb` partial.
 
-### 2. Assinatura do stream
+### 2. Stream subscription
 
-Na view existe:
+The view contains:
 
 ```erb
 <%= turbo_stream_from "messages" %>
 ```
 
-Isso cria uma assinatura do navegador ao stream assinado chamado `messages`.
-O navegador passa a escutar atualizações enviadas pelo
-`Turbo::StreamsChannel`.
+This subscribes the browser to the signed stream named `messages`. The browser
+then listens for updates sent by `Turbo::StreamsChannel`.
 
-### 3. Envio do formulário
+### 3. Form submission
 
-`form_with model: @message` gera um formulário para `POST /messages`.
-O controller extrai somente `username` e `content` usando `params.expect`,
-cria o registro e redireciona para a sala quando o save é bem-sucedido.
+`form_with model: @message` generates a form for `POST /messages`. The
+controller extracts only `username` and `content` with `params.expect`, creates
+the record, and redirects to the room when the save succeeds.
 
-Se a validação falhar, a mesma página é renderizada com status HTTP
-`422 Unprocessable Entity` e os erros ficam disponíveis em `@message.errors`.
+If validation fails, the same page is rendered with HTTP status `422
+Unprocessable Entity`, and the errors are available through
+`@message.errors`.
 
-### 4. Persistência e broadcast
+### 4. Persistence and broadcast
 
-O model `Message` declara:
+The `Message` model declares:
 
 ```ruby
 after_create_commit -> {
-	broadcast_append_to "messages", target: "messages"
+  broadcast_append_to "messages", target: "messages"
 }
 ```
 
-O callback ocorre depois do commit, evitando publicar uma mensagem que ainda
-poderia ser revertida. O Turbo renderiza o partial da nova mensagem e faz
-append no elemento HTML com `id="messages"`.
+The callback runs after the transaction commits, so a message that could still
+be rolled back is never published. Turbo renders the new message partial and
+appends it to the HTML element with `id="messages"`.
 
 ### 5. Auto-scroll
 
-O elemento principal da conversa usa:
+The conversation's main element uses:
 
 ```html
 <main data-controller="chat">
 ```
 
-O controller Stimulus observa alterações no DOM com `MutationObserver`. Quando
-uma mensagem é adicionada, ele move o scroll para o final da conversa. Esse
-comportamento é local ao navegador e não participa do broadcast.
+The Stimulus controller watches DOM changes with `MutationObserver`. When a
+message is added, it moves the scroll to the bottom of the conversation. This
+behavior is local to the browser and is not part of the broadcast.
 
-## Rotas
+## Routes
 
-| Método | Caminho | Ação | Finalidade |
+| Method | Path | Action | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/` | `messages#index` | Exibe a sala e as mensagens |
-| `POST` | `/messages` | `messages#create` | Valida e cria uma mensagem |
-| `GET` | `/up` | `rails/health#show` | Health check do Rails |
-| `GET` | `/service-worker` | `rails/pwa#service_worker` | Arquivo PWA gerado pelo Rails |
-| `GET` | `/manifest` | `rails/pwa#manifest` | Manifesto PWA gerado pelo Rails |
+| `GET` | `/` | `messages#index` | Displays the room and messages |
+| `POST` | `/messages` | `messages#create` | Validates and creates a message |
+| `GET` | `/up` | `rails/health#show` | Rails health check |
+| `GET` | `/service-worker` | `rails/pwa#service_worker` | Rails-generated PWA service worker |
+| `GET` | `/manifest` | `rails/pwa#manifest` | Rails-generated PWA manifest |
 
-Consulte todas as rotas com:
+List all routes with:
 
 ```bash
 bin/rails routes
 ```
 
-## Modelo e banco de dados
+## Model and database
 
-O model `Message` possui os atributos:
+The `Message` model has these attributes:
 
-| Atributo | Tipo | Definição |
+| Attribute | Type | Definition |
 | --- | --- | --- |
-| `id` | integer | Identificador gerado pelo banco |
-| `username` | string | Nome informado pelo participante |
-| `content` | text | Corpo da mensagem |
-| `created_at` | datetime | Data e hora de criação |
-| `updated_at` | datetime | Data e hora da última atualização |
+| `id` | integer | Database-generated identifier |
+| `username` | string | Name entered by the participant |
+| `content` | text | Message body |
+| `created_at` | datetime | Creation date and time |
+| `updated_at` | datetime | Last update date and time |
 
-As validações atuais exigem `username` e `content` preenchidos. A migration
-responsável está em `db/migrate/`.
+The current validations require both `username` and `content` to be present.
+The migration responsible for the table is in `db/migrate/`.
 
-O banco de desenvolvimento fica em:
+The development database is stored at `storage/development.sqlite3`; the test
+database is stored at `storage/test.sqlite3`. Locally generated files in
+`storage/` should not be committed.
 
-```text
-storage/development.sqlite3
-```
-
-O banco de teste fica em `storage/test.sqlite3`. Arquivos gerados localmente
-em `storage/` não devem ser versionados.
-
-Comandos úteis:
+Useful commands:
 
 ```bash
 bin/rails db:migrate
@@ -207,7 +218,7 @@ bin/rails db:reset
 bin/rails console
 ```
 
-Exemplo no console:
+Example in the Rails console:
 
 ```ruby
 Message.create!(username: "Ada", content: "Hello from the room")
@@ -216,109 +227,116 @@ Message.order(:created_at)
 
 ## Action Cable
 
-O arquivo `config/cable.yml` define o transporte por ambiente:
+The `config/cable.yml` file defines the adapter for each environment:
 
 ```yaml
 development:
-	adapter: async
+  adapter: async
 
 test:
-	adapter: test
+  adapter: test
 
 production:
-	adapter: redis
+  adapter: redis
 ```
 
-O adapter `async` é conveniente para desenvolvimento local em um único
-processo. Para produção, Redis é necessário para que múltiplos processos ou
-servidores compartilhem os broadcasts.
+The `async` adapter is convenient for local development in a single process.
+Redis is needed in production so multiple processes or servers can share
+broadcasts.
 
-Configure a URL de produção com:
+Configure the production URL with:
 
 ```bash
 export REDIS_URL=redis://localhost:6379/1
 ```
 
-O projeto ainda não inclui autenticação, múltiplas salas ou autorização. Todos
-os clientes que assinam `messages` recebem as mensagens da mesma sala.
-
-## Estrutura principal
+## Main structure
 
 ```text
 app/
-	controllers/messages_controller.rb  # Entrada HTTP do chat
-	models/message.rb                    # Validação e broadcast
-	views/messages/index.html.erb       # Página e formulário
-	views/messages/_message.html.erb    # HTML de uma mensagem
-	javascript/application.js            # Importa Turbo e controllers
-	javascript/controllers/chat_controller.js
-																			# Auto-scroll da conversa
-	assets/stylesheets/application.css  # Estilos da interface
+  controllers/messages_controller.rb  # HTTP entry point for the chat
+  models/message.rb                    # Validation and broadcast
+  views/messages/index.html.erb        # Page and form
+  views/messages/_message.html.erb     # One message's HTML
+  javascript/application.js            # Imports Turbo and controllers
+  javascript/controllers/chat_controller.js
+                                       # Conversation auto-scroll
+  assets/stylesheets/application.css   # Interface styles
 
 config/
-	routes.rb                            # Rotas HTTP
-	cable.yml                            # Adapter do Action Cable
-	database.yml                          # Configuração SQLite
-	importmap.rb                          # Pins JavaScript
+  routes.rb                            # HTTP routes
+  cable.yml                            # Action Cable adapter
+  database.yml                         # SQLite configuration
+  importmap.rb                         # JavaScript pins
 
 db/
-	migrate/                              # Histórico do schema
-	seeds.rb                              # Dados iniciais, atualmente vazio
+  migrate/                             # Schema history
+  seeds.rb                             # Initial data, currently empty
 
-Gemfile                                 # Dependências Ruby
-Gemfile.lock                            # Versões resolvidas
-bin/rails                               # CLI Rails do projeto
+Gemfile                                 # Ruby dependencies
+Gemfile.lock                            # Resolved versions
+bin/rails                               # Rails CLI for the project
 ```
 
-## Comandos de qualidade
+## Quality checks
 
-Executar a suíte de testes:
+Run the test suite:
 
 ```bash
 bin/rails test
 ```
 
-Executar o RuboCop nos arquivos Ruby do chat:
+Run RuboCop on the chat's Ruby files:
 
 ```bash
 bundle exec rubocop app/models/message.rb app/controllers/messages_controller.rb
 ```
 
-Executar análise de segurança:
+Run the security analysis:
 
 ```bash
 bin/brakeman
 ```
 
-Verificar whitespace no diff:
+Check whitespace in the diff:
 
 ```bash
 git diff --check
 ```
 
-## Estado atual e limites
+## Current state and limits
 
-Este é um laboratório de aprendizado, não uma aplicação pronta para produção.
-O escopo atual é deliberadamente pequeno:
+This is a learning lab, not a production-ready application. The current scope
+is deliberately small:
 
-- Não há usuários persistidos nem login.
-- O `username` é texto livre e não representa identidade autenticada.
-- Não há paginação ou limpeza do histórico.
-- Não há testes de request, model, system ou JavaScript escritos ainda.
-- O adapter de desenvolvimento não simula uma topologia distribuída.
-- O conteúdo é salvo e exibido como texto; a view usa escaping padrão do Rails.
+- There are no persisted users or login.
+- `username` is free-form text and does not represent an authenticated identity.
+- There is no pagination or history cleanup.
+- Request, model, system, and JavaScript tests have not been written yet.
+- The development adapter does not simulate a distributed topology.
+- Content is stored and displayed as text; the view uses Rails' default escaping.
 
-## Próximos experimentos
+## Next experiments
 
-1. Adicionar testes de model para validações e broadcast.
-2. Adicionar testes de request para `GET /` e `POST /messages`.
-3. Criar usuários com autenticação e substituir `username` por uma associação.
-4. Separar mensagens por sala usando `room_id` e streams diferentes.
-5. Adicionar presença online com Action Cable.
-6. Trocar o adapter local por Redis e executar mais de um processo Puma.
-7. Adicionar paginação ou carregamento incremental do histórico.
-8. Testar concorrência e ordenação de mensagens recebidas no mesmo instante.
+1. Add model tests for validations and broadcasts.
+2. Add request tests for `GET /` and `POST /messages`.
+3. Create authenticated users and replace `username` with an association.
+4. Separate messages by room with `room_id` and different streams.
+5. Add online presence with Action Cable.
+6. Replace the local adapter with Redis and run more than one Puma process.
+7. Add pagination or incremental history loading.
+8. Test concurrency and ordering for messages received at the same time.
 
-## Licença
+## Related labs
 
-Nenhuma licença foi definida neste repositório até o momento.
+This is one of a set of small labs exploring backend and Rails concepts in
+isolation before combining them into a larger integrated project:
+
+- `pagination-lab` - offset vs. cursor pagination
+- `hotwire-realtime-demo` - Turbo Streams and Action Cable real-time UI
+- `form-objects-playground` - form objects for multi-step, multi-model flows
+- `db-locking-lab` - optimistic vs. pessimistic locking under concurrency
+
+## License
+
+No license has been defined for this repository yet.
